@@ -2,8 +2,15 @@
 
 > Planning doc (akapug fork, branch `docs/posttraining-dataset`). Assessing whether `cv` +
 > OpenSession is a viable pipeline for extracting high-quality post-training data from real
-> agent-coding sessions — especially deep Opus-4.8 trajectories. Not a build plan yet; a design +
-> a feasibility + a risk read. Decisions (esp. legal/provenance) are the maintainer's.
+> agent-coding sessions — especially deep Opus-4.8 trajectories.
+>
+> **STATUS 2026-05-30: BUILT + VERIFIED up to the GPU train.** `cv dataset` ships the
+> chatml/sharegpt export (PR #3, branch `feat/dataset-export`); a real export round-trips through
+> `datasets.load_dataset` + `transformers apply_chat_template` (proper ChatML) on CPU — i.e. it's
+> trainer-ready. The only remaining step is the actual fine-tune, which needs an NVIDIA GPU
+> (Captain's **z8 / RTX 6000**, pending on the network) → drag the JSONL into Unsloth Studio. Legal
+> gate resolved-in-direction (build private now + public later); standing discipline = redact +
+> mistake-labeling.
 
 ## Thesis
 
