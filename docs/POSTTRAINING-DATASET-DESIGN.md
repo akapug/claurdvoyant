@@ -83,9 +83,54 @@ buildable *on* cv as new `convert`/`export` modes, not a new system.
 - **Scale/cost of curation.** The judge/score pass over a large corpus is the real compute cost;
   cv distill on a local model (already wired) keeps it cheap + private.
 
+## Unsloth Studio integration — no bespoke adapter needed (grounded in Unsloth docs, 2026-05)
+
+Unsloth Studio is a local web UI that bundles dataset build + fine-tune + inference + export.
+Critically for us, it does **direct drag-and-drop import** of `JSONL`/`JSON`/`CSV`/`Parquet` (Data
+Recipes are optional, for *synthesizing* from PDFs/CSVs — we don't need that; we already have real
+sessions). Its importer auto-detects, with four format patterns:
+
+| Studio format | Schema it expects |
+|---|---|
+| `chatml` | OpenAI-style `{"messages":[{"role":"user|assistant|system","content":"..."}]}` |
+| `sharegpt` | `{"conversations":[{"from":"human|gpt","value":"..."}]}` |
+| `alpaca` | `{"instruction":..,"input":..,"output":..}` |
+| `auto` | detect; manual column-mapping dialog if detection fails |
+
+**Conclusion: cv does not need an Unsloth-specific adapter.** It just needs `cv export` to emit one
+of these standard schemas, which Studio (and Unsloth-the-library's `standardize_sharegpt` /
+`apply_chat_template`, and TRL/HF in general) ingest directly. The "adapter" is a *format choice*,
+not Unsloth-coupled code — which is the right call (don't couple cv to one trainer). Target `chatml`
+as the default (most universal); offer `sharegpt` as an alias.
+
+The one real design decision is **tool calls** (our agentic edge — `Block::ToolUse`/`ToolResult`).
+Unsloth's public docs don't pin a function-call schema, and `chatml`'s `messages` is plain
+role/content. Two tiers:
+- **v1 (works in Studio today):** serialize each ToolUse/ToolResult into the assistant/user
+  `content` as readable structured text (e.g. a fenced `tool_call`/`tool_result` block). The model
+  learns the tool-use *pattern* in-band; zero schema risk; imports as plain chatml.
+- **v2 (target-model dependent):** when the target model's chat template has native tool roles
+  (Qwen/Llama tool-calling templates), map ToolUse→`tool_calls` and ToolResult→a `tool` role
+  message. This is the `--format trajectory` target and is where the agentic value concentrates.
+
+So: `cv export --format chatml` → drop the `.jsonl` straight into Unsloth Studio → fine-tune. That's
+the "really easy to plug in" path, no glue code.
+
+## Private vs public datasets (Captain-confirmed 2026-05)
+
+- **Private** (homelab / local use): built from our own repos (polyana, simbi, goodtimes) — fine,
+  they're ours, and public-later removes the long-term concern. Still redact inline secrets/creds.
+- **Public**: built from OSS creators' code + donated sessions (e.g. @emberian), contributed *in
+  OpenSession format* — which is exactly why OpenSession-as-a-standard matters: it's the donation
+  wire format. cv ingests/exports it natively.
+The legal/provenance gate above is thus **resolved in direction** (build both); the only standing
+discipline is redaction + mistake-labeling, not a go/no-go.
+
 ## Concretely buildable next (on cv, smallest-dose first)
 
-1. `cv export --format sft|trajectory <filter>` — OpenSession → training jsonl (new convert target).
+1. `cv export --format chatml|sharegpt|trajectory <filter>` — OpenSession → training jsonl.
+   `chatml`/`sharegpt` import straight into Unsloth Studio (and TRL/HF) with no adapter; `trajectory`
+   carries the tool-call/result structure for agentic RL. Tool calls fold into `content` in v1.
 2. An outcome-scorer: detect "verified-ending" sessions (tests-passed / build-green / PR-merged
    heuristics from the tool-result blocks) + a self-correction detector; emit a per-session quality
    score. Local-model judge via the existing distill backend.
